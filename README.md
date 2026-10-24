@@ -1,167 +1,97 @@
-# 🎮 Twitch Game Pulse
+# Twitch Game Pulse
 
-**Radar de audiencia de videojuegos en Twitch** — Qué juegos están ganando o perdiendo tracción entre streamers y espectadores.
+Radar de audiencia de videojuegos en Twitch: qué juegos ganan o pierden espectadores y streamers.
 
----
+**Demo:** https://twitch-game-pulse.vercel.app
 
-## Problema que resuelve
+## Problema
 
-Hoy es difícil saber, sin herramientas de pago (SullyGnome, StreamElements Analytics), qué juegos están creciendo o cayendo en audiencia de Twitch. Detectar ese movimiento a tiempo es la señal que usa la industria para decidir dónde invertir en marketing, patrocinio de streamers o lanzamiento de contenido.
+Sin herramientas de pago (SullyGnome, StreamElements) es difícil saber qué juegos están creciendo o cayendo en Twitch. Esa señal sirve para decidir dónde invertir en marketing, en qué juegos patrocinar streamers o cuándo lanzar contenido.
 
-**Twitch Game Pulse** resuelve esto con un dashboard gratuito que muestra en tiempo real qué juegos están ganando tracción, cómo evoluciona su audiencia y qué géneros dominan la plataforma. Además, incluye un **chat con IA** que responde preguntas sobre tus propios datos.
+Este proyecto guarda cada día una foto del top 100 de juegos de Twitch y, con esa serie, muestra rankings, tendencias, crecimiento semanal y variabilidad de la audiencia.
 
-## ¿A quién le sirve?
+## Datos
 
-- **Analistas de marketing y community managers** que necesitan decidir en qué juegos invertir esfuerzo
-- **Publishers pequeños/medianos** que buscan dónde patrocinar streamers o lanzar contenido
-- **Cualquier persona** que quiera entender las tendencias de audiencia en Twitch sin pagar herramientas
+[Twitch Helix API](https://dev.twitch.tv/docs/api/reference/) con autenticación OAuth (Client Credentials):
 
-## API utilizada
+- `GET /helix/games/top`: top 100 de juegos en ese momento.
+- `GET /helix/streams?game_id=...`: streams activos de cada juego; se suman sus viewers.
 
-[Twitch Helix API](https://dev.twitch.tv/docs/api/reference/) — Gratuita, requiere registro de app en dev.twitch.tv y autenticación OAuth (Client Credentials).
+Cada ejecución de `ingesta.py` guarda un snapshot por juego en `data/twitch_pulse.db` (SQLite). Twitch no ofrece histórico, así que la serie solo existe desde la primera ingesta (27/08/2026). Las categorías que no son juegos (Just Chatting, IRL, Music...) se filtran en la app. El detalle de tablas y columnas está en [diccionario_datos.md](diccionario_datos.md).
 
-**Endpoints utilizados:**
-- `POST /oauth2/token` — Obtención de App Access Token
-- `GET /helix/games/top` — Juegos con más audiencia actualmente
-- `GET /helix/streams` — Streams activos por juego (con `game_id` como filtro)
+## Resultados (27/08 – 21/09/2026)
 
-## Cómo ejecutar
+Del notebook [`notebooks/eda.ipynb`](notebooks/eda.ipynb), con 1.001 snapshots de 236 juegos:
 
-### 1. Instalar dependencias
+- **Volumen:** GTA V lidera el último snapshot con 157.631 viewers, seguido de World of Warcraft (150.974) y Counter-Strike (111.276). El top 5 se lleva solo el 21,5 % de la audiencia.
+- **Crecimiento:** World of Warcraft (+245 %), Phasmophobia (+238 %) y Destiny 2 (+197 %) son los que más suben respecto a la semana anterior.
+- **Variabilidad:** WARDOGS y Rust son los más irregulares (coeficiente de variación del 148 % y 145 %); Counter-Strike es el más estable de los grandes.
+- **Concentración por streamer:** juegos como BALL BOY Simulator reúnen más de 12.000 viewers por stream con solo 4 streams.
+
+## Limitaciones
+
+- **Huecos en la serie:** la ingesta no se ha ejecutado todos los días, y cada snapshot se tomó a una hora distinta. Como la audiencia de Twitch cambia mucho según la hora, los crecimientos indican dirección más que magnitud exacta.
+- **Top 100:** solo se siguen los juegos que están en el top en el momento de la ingesta.
+- Una versión anterior mezclaba 14 días de datos sintéticos con los reales; se han eliminado y los resultados están recalculados. `ingesta.py --sintetico` escribe ahora en una base aparte.
+
+## La app
+
+| Pestaña | Contenido |
+|---|---|
+| Resumen | KPIs del día elegido, top 10 y reparto del top 5 |
+| EDA | Ranking, evolución del top 5, crecimiento, variabilidad y viewers por stream, con comparativa entre dos fechas |
+| Ranking | Ranking del día frente al día anterior con datos |
+| Tendencias | Evolución de los juegos que elijas |
+| En subida | Top 10 por crecimiento semanal |
+| Chat | Preguntas sobre los datos (ver abajo) |
+
+La interfaz está en español, inglés, alemán, francés y portugués (`translations.py`).
+
+### Chat
+
+El chat no usa un LLM. Si la pregunta menciona un género conocido (shooter, moba, mmorpg...), responde con una consulta SQL de ranking o de crecimiento. Si no, busca las fichas de juego más parecidas en ChromaDB (búsqueda semántica con el modelo de embeddings por defecto de Chroma) y devuelve sus cifras. Las fichas las genera `preparar_corpus.py` a partir de los últimos 14 días de datos.
+
+## Actualización automática
+
+`.github/workflows/ingesta_diaria.yml` ejecuta la ingesta todos los días a las 18:00 UTC, reconstruye el corpus y hace commit de la base. Necesita dos secretos en *Settings → Secrets and variables → Actions*: `TWITCH_CLIENT_ID` y `TWITCH_CLIENT_SECRET`.
+
+## Ejecutarlo en local
 
 ```bash
 pip install -r requirements.txt
+copy secrets_ejemplo.toml secrets.toml   # y rellena client_id y client_secret
+python ingesta.py                        # añade un snapshot real
+python preparar_corpus.py                # fichas para el chat
+streamlit run app.py
 ```
 
-### 2. Configurar credenciales de Twitch
+Las credenciales se obtienen registrando una app en https://dev.twitch.tv/console/apps. Sin credenciales se puede probar con datos sintéticos:
 
 ```bash
-copy secrets_ejemplo.toml secrets.toml
+python ingesta.py --sintetico            # crea data/twitch_pulse_demo.db
+TWITCH_PULSE_DB=data/twitch_pulse_demo.db streamlit run app.py
 ```
 
-Edita `secrets.toml` con tus credenciales:
+## Estructura
 
-```toml
-[Twitch]
-client_id = "tu_client_id"
-client_secret = "tu_client_secret"
-```
-
-> **¿No tienes credenciales?** Registra tu app en https://dev.twitch.tv/console/apps (necesitas 2FA habilitado en tu cuenta de Twitch).
-
-### 3. Generar datos
-
-**Opción A — Datos sintéticos (para demo):**
-
-```bash
-python ingesta.py --sintetico
-```
-
-**Opción B — Datos reales de Twitch:**
-
-```bash
-python ingesta.py
-```
-
-> **Nota:** Ejecuta la ingesta una vez al día para acumular datos y construir la serie temporal.
-
-### 4. Construir corpus para el chat RAG
-
-```bash
-python preparar_corpus.py
-```
-
-### 5. Lanzar la app
-
-```bash
-python -m streamlit run app.py
-```
-
-La app se abrirá en https://twitch-game-pulse-yxsppvdvpqnt9wit6rezxt.streamlit.app/
-
-> **¿No quieres instalar nada?** Prueba la versión hosted: [Twitch Game Pulse — Online](https://twitch-game-pulse-yxsppvdvpqnt9wit6rezxt.streamlit.app)
-
-### 6. (Opcional) Ejecutar el notebook de análisis
-
-```bash
-cd notebooks
-jupyter notebook eda.ipynb
-```
-
-## Estructura del proyecto
-
-```
-Twitch Game Pulse/
-├── README.md                    # Este archivo
-├── requirements.txt             # Dependencias Python
-├── .gitignore                   # Secrets, chroma, venv
-├── secrets_ejemplo.toml         # Plantilla de credenciales
-├── ingesta.py                   # API Twitch → SQLite
-├── preparar_corpus.py           # Fichas → ChromaDB
-├── diccionario_datos.md         # Diccionario de datos
-├── storytelling.md              # Guion de presentación (15 min)
+```text
+├── app.py                    # Dashboard de Streamlit
+├── index.html                # Demo web (stlite)
+├── ingesta.py                # API de Twitch → SQLite
+├── preparar_corpus.py        # Fichas de tendencia → ChromaDB
+├── translations.py           # Textos de la interfaz
+├── diccionario_datos.md
 ├── data/
-│   ├── twitch_pulse.db          # Base de datos SQLite
-│   └── chroma/                  # ChromaDB persist
-├── notebooks/
-│   └── eda.ipynb                # Análisis exploratorio
-└── app.py                       # Dashboard Streamlit
+│   ├── twitch_pulse.db       # Snapshots de audiencia
+│   └── chroma/               # Índice del chat
+├── notebooks/eda.ipynb       # Análisis exploratorio
+└── .github/workflows/        # Ingesta diaria
 ```
-
-## Pestañas de la app
-
-| Pestaña | Descripción |
-|---------|-------------|
-| **📊 Resumen** | KPIs: total viewers, juegos rastreados, streams activos, juego top. Gráfico top 10 + pie distribución |
-| **🏅 Ranking** | Tabla sortable con todos los juegos ordenados por viewers |
-| **📈 Tendencias** | Gráfico temporal de audiencia por juego, multiselect para comparar |
-| **🚀 En subida** | Top 10 juegos con mayor crecimiento % vs semana anterior |
-| **ℹ️ Acerca** | Descripción, tecnología, limitaciones, cómo ejecutar |
-| **💬 Chat** | Chat RAG que responde preguntas sobre tendencias usando tus datos |
-
-## Chat RAG — Pregúntale a tus datos
-
-El chat usa **Ollama** para generar respuestas basadas en tus propios datos:
-
-1. `preparar_corpus.py` genera fichas de tendencia por juego
-2. Las fichas se almacenan en **ChromaDB** con embeddings
-3. Al preguntar, ChromaDB recupera las fichas más relevantes
-4. Ollama genera una respuesta citando juego y fecha
-
-**Modelos utilizados:**
-- Embeddings: `embeddinggemma` (621 MB)
-- Generación: `qwen3.5:latest` (6.6 GB)
-
-**Ejemplo de pregunta:** "¿qué shooter tiene más audiencia?"
-
-## Limitaciones importantes
-
-- **Sin histórico retroactivo:** Twitch no ofrece datos históricos de audiencia. La serie temporal solo empieza a construirse desde que ejecutas `ingesta.py` por primera vez.
-- **Top 100:** El endpoint `/games/top` devuelve como máximo 100 juegos por petición.
-- **Rate limits:** Twitch limita a ~800 peticiones por minuto. `ingesta.py` implementa backoff para manejar errores 429.
 
 ## Tecnologías
 
-- **Python 3.14** — Lenguaje principal
-- **SQLite** — Almacenamiento local de snapshots
-- **Streamlit** — Dashboard interactivo con tema gaming
-- **Plotly** — Visualizaciones interactivas
-- **ChromaDB** — Base de datos vectorial para RAG
-- **Ollama** — LLM local (embeddinggemma + qwen3.6)
-
-## Datos actuales
-
-La base de datos contiene **218 videojuegos** rastreados con datos reales de Twitch (septiembre 2026). La serie temporal crece con cada ejecución de `ingesta.py`.
-
-**Top 5 videojuegos por audiencia (última ingesta 02/09/2026):**
-1. GTA V — 130K viewers
-2. Minecraft — 121K viewers
-3. League of Legends — 110K viewers
-4. World of Warcraft — 108K viewers
-5. Counter-Strike — 90K viewers
-
-> **Nota:** La categoría más vista de Twitch es "Just Chatting" (562K viewers), pero no es un videojuego — es gente hablando de temas variados. Twitch Game Pulse se enfoca en **videojuegos reales**.
+Python, SQLite, Pandas, Plotly, Streamlit, ChromaDB y GitHub Actions.
 
 ## Autor
 
-Álvaro — Proyecto de verano 2026
+Álvaro Domingo Cordón · [LinkedIn](https://www.linkedin.com/in/alvaro-domingo/) · [GitHub](https://github.com/alvarodc093-pixel)

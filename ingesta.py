@@ -3,14 +3,19 @@ ingesta.py — Ingesta de datos desde la API de Twitch Helix a SQLite.
 
 Uso:
     python ingesta.py                 # Ingesta real desde la API
-    python ingesta.py --sintetico     # Genera datos sintéticos para demo
+    python ingesta.py --sintetico     # Genera datos sintéticos en data/twitch_pulse_demo.db
+
+Credenciales: variables de entorno TWITCH_CLIENT_ID y TWITCH_CLIENT_SECRET
+(así las recibe GitHub Actions) o, en local, el fichero secrets.toml.
 """
 
 import sys
 sys.stdout.reconfigure(encoding='utf-8')
 
+import os
 import sqlite3
 import time
+import zlib
 import toml
 import requests
 from datetime import datetime, timedelta, timezone
@@ -18,10 +23,20 @@ import random
 
 BASE_URL = "https://api.twitch.tv/helix"
 DB_PATH = "data/twitch_pulse.db"
+# Los datos sintéticos van a otra base: mezclarlos con los reales falsea las tendencias.
+DB_SINTETICA = "data/twitch_pulse_demo.db"
+TIMEOUT = 30
 
 
 def cargar_configuracion():
-    """Carga las credenciales de Twitch desde secrets.toml."""
+    """Credenciales de Twitch: variables de entorno o secrets.toml."""
+    client_id = os.environ.get("TWITCH_CLIENT_ID")
+    client_secret = os.environ.get("TWITCH_CLIENT_SECRET")
+    if client_id and client_secret:
+        return client_id, client_secret
+    if not os.path.exists("secrets.toml"):
+        sys.exit("Faltan credenciales: define TWITCH_CLIENT_ID y TWITCH_CLIENT_SECRET "
+                 "o copia secrets_ejemplo.toml como secrets.toml.")
     secrets = toml.load("secrets.toml")
     return secrets["Twitch"]["client_id"], secrets["Twitch"]["client_secret"]
 
@@ -34,7 +49,7 @@ def obtener_token(client_id, client_secret):
         "client_secret": client_secret,
         "grant_type": "client_credentials",
     }
-    resp = requests.post(url, params=params)
+    resp = requests.post(url, params=params, timeout=TIMEOUT)
     resp.raise_for_status()
     return resp.json()["access_token"]
 
@@ -50,7 +65,7 @@ def cabeceras(client_id, token):
 def peticion_con_reintentos(url, headers, params=None, max_reintentos=5):
     """Realiza una petición GET con backoff exponencial ante errores 429."""
     for intento in range(max_reintentos):
-        resp = requests.get(url, headers=headers, params=params)
+        resp = requests.get(url, headers=headers, params=params, timeout=TIMEOUT)
         if resp.status_code == 429:
             espera = int(resp.headers.get("Retry-After", 2 ** (intento + 1)))
             print(f"  Rate limit alcanzado. Esperando {espera}s...")
@@ -156,7 +171,7 @@ def guardar_snapshot(conn, juego_id, viewers, num_streams):
 def ejecutar_ingesta():
     """Ejecuta la ingesta completa desde la API de Twitch."""
     print("=== Twitch Game Pulse — Ingesta de datos ===")
-    print(f"Fecha: {datetime.now(timezone.utc).isoformat()}Z\n")
+    print(f"Fecha: {datetime.now(timezone.utc).isoformat()}\n")
 
     client_id, client_secret = cargar_configuracion()
     token = obtener_token(client_id, client_secret)
@@ -178,10 +193,11 @@ def ejecutar_ingesta():
     print(f"\nIngesta completada. Datos guardados en {DB_PATH}")
 
 
-def generar_datos_sinteticos(db_path=DB_PATH, dias=14):
+def generar_datos_sinteticos(db_path=DB_SINTETICA, dias=14):
     """
-    Genera datos sintéticos realistas para demo.
-    Simula ~50 juegos reales con patrones de audiencia variados.
+    Genera datos sintéticos para probar la app sin credenciales.
+    Simula 50 juegos con patrones de audiencia variados. Para verlos en la app:
+    TWITCH_PULSE_DB=data/twitch_pulse_demo.db streamlit run app.py
     """
     print("=== Twitch Game Pulse — Generando datos SINTÉTICOS ===\n")
 
@@ -223,7 +239,7 @@ def generar_datos_sinteticos(db_path=DB_PATH, dias=14):
         es_fin_semana = fecha.weekday() >= 5
 
         for nombre, viewers_base, streams_base in JUEGOS_SIMULADOS:
-            juego_id = hash(nombre) % 100000
+            juego_id = zlib.crc32(nombre.encode()) % 100000  # estable entre ejecuciones
 
             conn.execute(
                 "INSERT OR REPLACE INTO juegos (id, nombre, box_art_url) VALUES (?, ?, ?)",

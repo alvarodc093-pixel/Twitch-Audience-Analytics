@@ -10,9 +10,9 @@ Requiere que exista data/twitch_pulse.db con datos de ingesta.py.
 import sqlite3
 import os
 import chromadb
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
-DB_PATH = "data/twitch_pulse.db"
+DB_PATH = os.environ.get("TWITCH_PULSE_DB", "data/twitch_pulse.db")
 CHROMA_PATH = "data/chroma"
 
 
@@ -22,7 +22,6 @@ def obtener_snapshots(db_path, dias=7):
     conn.row_factory = sqlite3.Row
 
     cutoff = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
-    from datetime import timedelta
     cutoff = cutoff - timedelta(days=dias)
 
     query = """
@@ -77,7 +76,7 @@ Tendencia: {tendencia} ({cambio_pct:+.1f}%)
 Viewers máximos (período): {viewers_max:,}
 Viewers mínimos (período): {viewers_min:,}
 Número de snapshots analizados: {len(snapshots_juego)}
-Resumen: El juego "{nombre}" tiene actualmente {viewers_actual:,} espectadores en {streams_actual} streams. 
+Resumen: El juego "{nombre}" tiene actualmente {viewers_actual:,} espectadores en {streams_actual} streams.
 Su tendencia es {tendencia} con un cambio del {cambio_pct:+.1f}% en el período analizado.
 El rango de viewers fue entre {viewers_min:,} y {viewers_max:,}."""
 

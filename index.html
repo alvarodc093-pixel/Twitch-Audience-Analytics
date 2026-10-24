@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Twitch Game Pulse</title>
+  <meta name="description" content="Radar de audiencia de videojuegos en Twitch, hecho con Streamlit y ejecutado en el navegador con stlite.">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@stlite/browser@1.11.0/build/stlite.css">
+  <style>
+    body { margin: 0; font-family: system-ui, sans-serif; background: #0E0B16; }
+    #carga { padding: 48px 24px; text-align: center; color: #ADADB8; }
+  </style>
+</head>
+<body>
+  <div id="root"><p id="carga">Cargando el dashboard en tu navegador (la primera vez tarda unos 20-30 segundos)…</p></div>
+  <script type="module">
+    // La app de Streamlit se ejecuta entera en el navegador con stlite (Pyodide).
+    // En producción el código y la base se leen de la rama main de GitHub, así la demo
+    // muestra los datos de la última ingesta diaria sin volver a desplegar nada.
+    import { mount } from "https://cdn.jsdelivr.net/npm/@stlite/browser@1.11.0/build/stlite.js";
+    const local = ["localhost", "127.0.0.1"].includes(location.hostname);
+    const base = local ? "" : "https://raw.githubusercontent.com/alvarodc093-pixel/Twitch-Audience-Analytics/main/";
+    mount(
+      {
+        requirements: ["pandas", "plotly", "sqlite3"],
+        entrypoint: "app.py",
+        files: {
+          "app.py": { url: base + "app.py" },
+          "translations.py": { url: base + "translations.py" },
+          "data/twitch_pulse.db": { url: base + "data/twitch_pulse.db" },
+          ".streamlit/config.toml": { data: "[client]\ntoolbarMode = \"viewer\"\n\n[theme]\nbase = \"dark\"\n" },
+        },
+      },
+      document.getElementById("root"),
+    );
+  </script>
+</body>
+</html>

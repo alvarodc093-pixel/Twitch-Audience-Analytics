@@ -4,3 +4,4 @@ __pycache__/
 .venv/
 .env
 .ipynb_checkpoints/
+data/twitch_pulse_demo.db

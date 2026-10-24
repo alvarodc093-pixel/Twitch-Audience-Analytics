@@ -12,12 +12,10 @@ import plotly.express as px
 import plotly.graph_objects as go
 import sqlite3
 import os
-import chromadb
-import ollama
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from translations import LANGUAGES, get_text
 
-DB_PATH = "data/twitch_pulse.db"
+DB_PATH = os.environ.get("TWITCH_PULSE_DB", "data/twitch_pulse.db")
 CHROMA_PATH = "data/chroma"
 
 CATEGORIAS_NO_JUEGOS = [
@@ -205,6 +203,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
+@st.cache_resource(ttl="1h")
 def cargar_datos():
     if not os.path.exists(DB_PATH):
         return pd.DataFrame()
@@ -301,19 +300,23 @@ def sidebar_filtros(df):
         if not df.empty:
             min_date = df["fecha"].min()
             max_date = df["fecha"].max()
-            fecha_inicio, fecha_fin = st.date_input(
+            rango = st.date_input(
                 get_text(lang, "sidebar_fecha"), value=(min_date, max_date),
                 min_value=min_date, max_value=max_date,
             )
+            # Mientras se elige el rango, date_input devuelve solo la fecha inicial.
+            fecha_inicio, fecha_fin = (rango[0], rango[-1]) if rango else (min_date, max_date)
+            ultima = df["timestamp"].max().strftime("%d/%m/%Y %H:%M") + " UTC"
         else:
             fecha_inicio, fecha_fin = None, None
+            ultima = "—"
         st.markdown("---")
         st.markdown(f"""
         <div style="background: rgba(145,70,255,0.1); border: 1px solid rgba(145,70,255,0.3);
                     border-radius: 8px; padding: 0.8rem; text-align: center;">
             <p style="color: #ADADB8; font-size: 0.8rem; margin: 0;">{get_text(lang, "sidebar_ultima")}</p>
             <p style="color: #BF94FF; font-size: 0.95rem; margin: 0.2rem 0 0 0; font-weight: 600;">
-                {datetime.now(timezone.utc).strftime('%d/%m/%Y %H:%M')} UTC
+                {ultima}
             </p>
         </div>
         """, unsafe_allow_html=True)
@@ -365,7 +368,7 @@ def pestaña_resumen(df):
             font=dict(color="#EFEFEF"),
             xaxis=dict(gridcolor="rgba(145,70,255,0.1)"),
             yaxis=dict(gridcolor="rgba(145,70,255,0.1)"))
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
 
     with col_der:
         st.markdown(f"### {get_text(lang, 'pie_title')} — {fecha_sel.strftime('%d/%m/%Y')}")
@@ -375,7 +378,7 @@ def pestaña_resumen(df):
         fig_pie.update_layout(paper_bgcolor="rgba(0,0,0,0)", font=dict(color="#EFEFEF"),
             showlegend=True, legend=dict(font=dict(color="#ADADB8")))
         fig_pie.update_traces(textposition="inside", textinfo="percent+label")
-        st.plotly_chart(fig_pie, use_container_width=True)
+        st.plotly_chart(fig_pie, width="stretch")
 
 
 def pestaña_ranking(df, fecha_inicio, fecha_fin):
@@ -405,7 +408,7 @@ def pestaña_ranking(df, fecha_inicio, fecha_fin):
         mostrar = mostrar.reset_index(drop=True)
         mostrar.index = mostrar.index + 1
         mostrar.index.name = "#"
-        st.dataframe(mostrar, use_container_width=True)
+        st.dataframe(mostrar, width="stretch")
 
     idx_ayer = fechas_disponibles.index(fecha_sel) + 1 if fecha_sel in fechas_disponibles else -1
     if idx_ayer < len(fechas_disponibles):
@@ -421,7 +424,7 @@ def pestaña_ranking(df, fecha_inicio, fecha_fin):
             mostrar_ayer = mostrar_ayer.reset_index(drop=True)
             mostrar_ayer.index = mostrar_ayer.index + 1
             mostrar_ayer.index.name = "#"
-            st.dataframe(mostrar_ayer, use_container_width=True)
+            st.dataframe(mostrar_ayer, width="stretch")
 
         st.markdown("---")
         st.markdown(f"**{get_text(lang, 'ranking_comparativa')}**")
@@ -461,11 +464,11 @@ def pestaña_tendencias(df, fecha_inicio, fecha_fin):
     fig.update_layout(legend_title_text=get_text(lang, "col_juego"), paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)", font=dict(color="#EFEFEF"),
         xaxis=dict(gridcolor="rgba(145,70,255,0.1)"), yaxis=dict(gridcolor="rgba(145,70,255,0.1)"))
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
     st.markdown("### " + get_text(lang, "tendencias_detalle"))
     tabla_detalle = df_filtrado.pivot_table(index="fecha", columns="nombre",
         values="viewers", aggfunc="mean").fillna(0).astype(int)
-    st.dataframe(tabla_detalle, use_container_width=True)
+    st.dataframe(tabla_detalle, width="stretch")
 
 
 def pestaña_en_subida(df):
@@ -487,12 +490,12 @@ def pestaña_en_subida(df):
     mostrar = mostrar.reset_index(drop=True)
     mostrar.index = mostrar.index + 1
     mostrar.index.name = "#"
-    st.dataframe(mostrar, use_container_width=True)
+    st.dataframe(mostrar, width="stretch")
     fig = px.bar(top_crecimiento, x="nombre", y="crecimiento_pct", color="crecimiento_pct",
         color_continuous_scale="RdYlGn", labels={"nombre": get_text(lang, "col_juego2"), "crecimiento_pct": get_text(lang, "col_crecimiento")})
     fig.update_layout(xaxis_tickangle=-45, showlegend=False, paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)", font=dict(color="#EFEFEF"))
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
 
 
 def pestaña_eda(df):
@@ -559,7 +562,7 @@ def pestaña_eda(df):
             labels={"nombre": get_text(lang, "col_juego"), "viewers": get_text(lang, "col_viewers")})
         fig.update_layout(xaxis_tickangle=-45, showlegend=False, paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="rgba(0,0,0,0)", font=dict(color="#EFEFEF"))
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
     with col2:
         st.markdown(f"**Top 5 concentran {top5_pct:.1f}%** de la audiencia")
         top5 = ultimo.head(5)
@@ -567,7 +570,7 @@ def pestaña_eda(df):
             color_discrete_sequence=["#9146FF", "#BF94FF", "#7B2FCC", "#448AFF", "#00C853"])
         fig_pie.update_layout(paper_bgcolor="rgba(0,0,0,0)", font=dict(color="#EFEFEF"), showlegend=False)
         fig_pie.update_traces(textposition="inside", textinfo="percent+label")
-        st.plotly_chart(fig_pie, use_container_width=True)
+        st.plotly_chart(fig_pie, width="stretch")
 
     if fecha_cmp:
         st.markdown(f"**Comparativa — {fecha_cmp.strftime('%d/%m/%Y')}**")
@@ -579,7 +582,7 @@ def pestaña_eda(df):
                 labels={"nombre": get_text(lang, "col_juego"), "viewers": get_text(lang, "col_viewers")})
             fig_cmp.update_layout(xaxis_tickangle=-45, showlegend=False, paper_bgcolor="rgba(0,0,0,0)",
                 plot_bgcolor="rgba(0,0,0,0)", font=dict(color="#EFEFEF"))
-            st.plotly_chart(fig_cmp, use_container_width=True)
+            st.plotly_chart(fig_cmp, width="stretch")
         with col4:
             st.markdown(f"**Top 5 concentran {top5_pct_cmp:.1f}%**")
             top5_cmp = ultimo_cmp.head(5)
@@ -587,7 +590,7 @@ def pestaña_eda(df):
                 color_discrete_sequence=["#9146FF", "#BF94FF", "#7B2FCC", "#448AFF", "#00C853"])
             fig_pie_cmp.update_layout(paper_bgcolor="rgba(0,0,0,0)", font=dict(color="#EFEFEF"), showlegend=False)
             fig_pie_cmp.update_traces(textposition="inside", textinfo="percent+label")
-            st.plotly_chart(fig_pie_cmp, use_container_width=True)
+            st.plotly_chart(fig_pie_cmp, width="stretch")
     st.markdown("---")
 
     # Sección 2: Evolución temporal
@@ -607,7 +610,7 @@ def pestaña_eda(df):
                            annotation_text=fecha_sel.strftime("%d/%m"))
         fig_line.add_vline(x=str(fecha_cmp), line_dash="dash", line_color="#BF94FF",
                            annotation_text=fecha_cmp.strftime("%d/%m"))
-    st.plotly_chart(fig_line, use_container_width=True)
+    st.plotly_chart(fig_line, width="stretch")
     st.markdown("---")
 
     # Sección 3: Crecimiento
@@ -623,7 +626,7 @@ def pestaña_eda(df):
             fig_crec.update_layout(showlegend=False, paper_bgcolor="rgba(0,0,0,0)",
                 plot_bgcolor="rgba(0,0,0,0)", font=dict(color="#EFEFEF"),
                 yaxis=dict(autorange="reversed"))
-            st.plotly_chart(fig_crec, use_container_width=True)
+            st.plotly_chart(fig_crec, width="stretch")
     st.markdown("---")
 
     # Sección 4: Variabilidad
@@ -638,7 +641,7 @@ def pestaña_eda(df):
             labels={"media": "Audiencia media", "cv": "Coef. variación (%)"})
         fig_var.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
             font=dict(color="#EFEFEF"))
-        st.plotly_chart(fig_var, use_container_width=True)
+        st.plotly_chart(fig_var, width="stretch")
     st.markdown("---")
 
     # Sección 5: Eficiencia
@@ -651,7 +654,7 @@ def pestaña_eda(df):
         labels={"nombre": get_text(lang, "col_juego"), "vps": "Viewers / Stream"})
     fig_vps.update_layout(showlegend=False, paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)", font=dict(color="#EFEFEF"))
-    st.plotly_chart(fig_vps, use_container_width=True)
+    st.plotly_chart(fig_vps, width="stretch")
 
     if fecha_cmp:
         st.markdown(f"**Eficiencia — {fecha_cmp.strftime('%d/%m/%Y')}**")
@@ -663,18 +666,29 @@ def pestaña_eda(df):
             labels={"nombre": get_text(lang, "col_juego"), "vps": "Viewers / Stream"})
         fig_vps_cmp.update_layout(showlegend=False, paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="rgba(0,0,0,0)", font=dict(color="#EFEFEF"))
-        st.plotly_chart(fig_vps_cmp, use_container_width=True)
+        st.plotly_chart(fig_vps_cmp, width="stretch")
 
-    # Síntesis
+    # Síntesis: ejemplos calculados con los datos, no fijos
     st.markdown("---")
     st.markdown("#### Síntesis — Las tres perspectivas")
-    st.markdown("""
+    lider = ultimo.iloc[0] if not ultimo.empty else None
+    ej_volumen = f"{lider['nombre']}: {lider['viewers']:,.0f} viewers".replace(",", ".") if lider is not None else "—"
+    ej_evolucion = "—"
+    if not crecimiento.empty:
+        fiables = crecimiento[crecimiento["viewers_anterior"] > 1000]
+        if not fiables.empty:
+            g = fiables.iloc[0]
+            ej_evolucion = f"{g['nombre']}: {g['crecimiento_pct']:+.0f}% vs semana anterior"
+    ej_variabilidad = f"{stats.iloc[0]['nombre']}: CV {stats.iloc[0]['cv']:.0f}%" if not stats.empty else "—"
+    st.markdown(f"""
     | Perspectiva | Qué mide | Ejemplo |
     |---|---|---|
-    | **Volumen** | Cuánta audiencia tiene | GTA V: 129.510 viewers |
-    | **Evolución** | Si crece o decrece | WoW: +1.077% vs semana anterior |
-    | **Variabilidad** | Si es estable | Rust: CV 140.9% (muy inestable) |
+    | **Volumen** | Cuánta audiencia tiene | {ej_volumen} |
+    | **Evolución** | Si crece o decrece | {ej_evolucion} |
+    | **Variabilidad** | Si es estable | {ej_variabilidad} |
     """)
+    st.caption("Cada snapshot se toma a una hora distinta del día, y la audiencia de Twitch cambia mucho "
+               "según la hora. Los crecimientos y la variabilidad deben leerse con esa cautela.")
 
 
 def pestaña_acerca():
@@ -710,7 +724,7 @@ def pestaña_acerca():
     python -m streamlit run app.py
     ```
 
-    **{get_text(lang, "acerca_tech")}** Python, SQLite, Streamlit, Plotly, ChromaDB, Ollama
+    **{get_text(lang, "acerca_tech")}** Python, SQLite, Streamlit, Plotly, ChromaDB
     """)
 
 
@@ -762,14 +776,32 @@ def detectar_tipo_pregunta(pregunta):
     return "top"
 
 
+def buscar_por_nombre(pregunta, k):
+    """Alternativa sin Chroma: juegos cuyo nombre aparece en la pregunta, o el top actual."""
+    conn = sqlite3.connect(DB_PATH)
+    filas = conn.execute('''
+        SELECT j.nombre, s.viewers, s.num_streams
+        FROM snapshots_audiencia s JOIN juegos j ON j.id = s.juego_id
+        WHERE DATE(s.timestamp) = (SELECT DATE(MAX(timestamp)) FROM snapshots_audiencia)
+        ORDER BY s.viewers DESC
+    ''').fetchall()
+    conn.close()
+    filas = [f for f in filas if f[0] not in CATEGORIAS_NO_JUEGOS]
+    p = pregunta.lower()
+    mencionados = [f for f in filas if f[0].lower() in p]
+    elegidos = (mencionados or filas)[:k]
+    respuesta = "**Resultados encontrados:**\n\n"
+    for i, (nombre, viewers, streams) in enumerate(elegidos, 1):
+        respuesta += f"**{i}. {nombre}**\n   - Viewers: {viewers:,}\n   - Streams: {streams:,}\n\n"
+    return respuesta
+
+
 def generar_respuesta_rag(pregunta, k=3):
-    if not os.path.exists(CHROMA_PATH):
-        return "No hay corpus. Ejecuta: python preparar_corpus.py"
+    """Responde con datos: consultas SQL para géneros conocidos y búsqueda semántica
+    en Chroma para el resto. No hay LLM: la respuesta se arma con los resultados."""
     genero, juegos_genero = detectar_genero(pregunta)
     tipo = detectar_tipo_pregunta(pregunta)
     try:
-        client = chromadb.PersistentClient(path=CHROMA_PATH)
-        collection = client.get_collection("twitch_games")
         if genero and juegos_genero:
             conn = sqlite3.connect(DB_PATH)
             cur = conn.cursor()
@@ -778,8 +810,7 @@ def generar_respuesta_rag(pregunta, k=3):
             placeholders = ",".join(["?" for _ in juegos_genero])
 
             if tipo == "crecimiento":
-                from datetime import timedelta
-                fecha_max_dt = __import__('datetime').datetime.strptime(fecha_max, '%Y-%m-%d').date()
+                fecha_max_dt = datetime.strptime(fecha_max, '%Y-%m-%d').date()
                 inicio_actual = fecha_max_dt - timedelta(days=7)
                 inicio_anterior = inicio_actual - timedelta(days=7)
                 query_crec = f'''
@@ -794,13 +825,14 @@ def generar_respuesta_rag(pregunta, k=3):
                     ORDER BY (viewers_actual - viewers_anterior) * 100.0 / viewers_anterior DESC
                     LIMIT ?
                 '''
-                cur.execute(query_crec, [str(inicio_anterior), str(fecha_max_dt),
+                cur.execute(query_crec, [str(inicio_actual), str(fecha_max_dt),
                                           str(inicio_anterior), str(inicio_actual)] +
                            juegos_genero + [k])
                 rows = cur.fetchall()
                 conn.close()
                 if not rows:
-                    return "No encontre datos de crecimiento para ese genero."
+                    return ("No hay datos de la semana anterior para comparar el crecimiento de ese genero. "
+                            "La serie tiene huecos: solo hay snapshots de los dias en que se ejecuto la ingesta.")
                 respuesta = f"**Crecimiento de {genero} (ultima semana vs anterior):**\n\n"
                 for i, (nombre, actual, anterior) in enumerate(rows, 1):
                     if anterior and anterior > 0:
@@ -834,6 +866,14 @@ def generar_respuesta_rag(pregunta, k=3):
                     respuesta += f"   - Streams: {streams:,}\n\n"
                 return respuesta
         else:
+            try:
+                import chromadb
+            except ImportError:  # p.ej. en la demo web, donde Chroma no está disponible
+                return buscar_por_nombre(pregunta, k)
+            if not os.path.exists(CHROMA_PATH):
+                return buscar_por_nombre(pregunta, k)
+            client = chromadb.PersistentClient(path=CHROMA_PATH)
+            collection = client.get_collection("twitch_games")
             resultados = collection.query(query_texts=[pregunta], n_results=k)
             if not resultados["documents"] or not resultados["documents"][0]:
                 return "No encontre informacion relevante."
