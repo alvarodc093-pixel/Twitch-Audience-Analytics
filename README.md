@@ -1,8 +1,17 @@
 # Twitch Game Pulse
 
-Radar de audiencia de videojuegos en Twitch: qué juegos ganan o pierden espectadores y streamers.
+**Radar de audiencia de videojuegos en Twitch: qué juegos ganan o pierden espectadores, con datos que se actualizan solos cada día.**
 
-**Demo:** https://twitch-game-pulse.vercel.app
+[![Demo](https://img.shields.io/badge/Demo-en%20vivo-2ea44f?style=flat-square)](https://twitch-game-pulse.vercel.app) [![Ingesta diaria](https://github.com/alvarodc093-pixel/Twitch-Audience-Analytics/actions/workflows/ingesta_diaria.yml/badge.svg)](https://github.com/alvarodc093-pixel/Twitch-Audience-Analytics/actions/workflows/ingesta_diaria.yml) ![Python](https://img.shields.io/badge/Python-3.12-3776AB?style=flat-square&logo=python&logoColor=white) ![SQLite](https://img.shields.io/badge/SQLite-datos-003B57?style=flat-square&logo=sqlite&logoColor=white) ![Streamlit](https://img.shields.io/badge/Streamlit-app-FF4B4B?style=flat-square&logo=streamlit&logoColor=white)
+
+![Resumen de Twitch Game Pulse](docs/img/graficos.png)
+
+## En resumen
+
+- **Problema:** sin herramientas de pago es difícil saber qué juegos están creciendo en Twitch, una señal clave para marketing y patrocinios.
+- **Datos:** snapshots diarios del top 100 de juegos de la API Helix de Twitch, recogidos por un workflow de GitHub Actions.
+- **Resultado:** en septiembre, World of Warcraft (+245 %) y Phasmophobia (+238 %) fueron los que más crecieron, y el top 5 concentraba solo el 21,5 % de la audiencia.
+- **App:** dashboard en Streamlit con ranking, tendencias, crecimiento semanal y variabilidad, en 5 idiomas.
 
 ## Problema
 
@@ -35,6 +44,8 @@ Del notebook [`notebooks/eda.ipynb`](notebooks/eda.ipynb), con 1.001 snapshots d
 - Una versión anterior mezclaba 14 días de datos sintéticos con los reales; se han eliminado y los resultados están recalculados. `ingesta.py --sintetico` escribe ahora en una base aparte.
 
 ## La app
+
+![Análisis exploratorio en la app](docs/img/eda.png)
 
 | Pestaña | Contenido |
 |---|---|
